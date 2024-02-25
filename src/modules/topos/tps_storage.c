@@ -597,10 +597,9 @@ int tps_storage_record(sip_msg_t *msg, tps_data_t *td, int dialog, int dir)
 	if(dialog == 0) {
 		sruid_nextx(&_tps_sruid, sx);
 		suid = _tps_sruid.uid;
-		if(_tps_enable_register_publish==1)
-		{
+		if(_tps_enable_register_publish == 1) {
 			if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
-				td->a_uuid=suid;
+				td->a_uuid = suid;
 		}
 	} else {
 		if(td->a_uuid.len > 0) {
