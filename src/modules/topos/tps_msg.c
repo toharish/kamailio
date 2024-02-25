@@ -269,7 +269,7 @@ int tps_skip_msg(sip_msg_t *msg)
 	}
 
 	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)) {
-		if(_tps_enable_register_publish==0){
+		if(_tps_enable_register_publish == 0) {
 			return 1;
 		}
 	}
@@ -881,9 +881,9 @@ int tps_request_received(sip_msg_t *msg, int dialog)
 	unsigned int metid = 0;
 
 	LM_DBG("handling incoming request\n");
-	if(_tps_enable_register_publish==0)
-	{
+	if(_tps_enable_register_publish == 0) {
 		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
+			
 	        	/* nothing to do for REGISTER PUBLISH request */
 			return 0;
 	}
@@ -1043,8 +1043,7 @@ int tps_response_received(sip_msg_t *msg)
 	uint32_t direction = TPS_DIR_DOWNSTREAM;
 
 	LM_DBG("handling incoming response\n");
-	if(_tps_enable_register_publish==1)
-	{
+	if(_tps_enable_register_publish == 1) {
 		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
 			return tps_reg_response_received(msg);
 	}
@@ -1164,8 +1163,7 @@ int tps_request_sent(sip_msg_t *msg, int dialog, int local)
 
 	LM_DBG("handling outgoing request (%d, %d)\n", dialog, local);
 	
-	if(_tps_enable_register_publish==1)
-	{
+	if(_tps_enable_register_publish == 1) {
 		LM_DBG("_tps_enable_register_publish==1\n");
 		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
 			return tps_reg_request_sent(msg);
@@ -1355,8 +1353,7 @@ int tps_response_sent(sip_msg_t *msg)
 	}
 	mtsd.x_vbranch1 = xvbranch;
 	tps_remove_xbranch(msg);
-	if(_tps_enable_register_publish==0)
-	{
+	if(_tps_enable_register_publish == 0) {
 		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
 			return 0;
 	}
