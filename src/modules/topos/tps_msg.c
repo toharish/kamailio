@@ -881,12 +881,12 @@ int tps_request_received(sip_msg_t *msg, int dialog)
 	unsigned int metid = 0;
 
 	LM_DBG("handling incoming request\n");
-	if(_tps_enable_register_publish == 0) {
-		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
-			
-	        	/* nothing to do for REGISTER PUBLISH request */
+	
+	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)){
+	        	/* nothing to do for REGISTER PUBLISH when received */
 			return 0;
 	}
+
 	if(dialog == 0) {
 		/* nothing to do for initial request */
 		return 0;
@@ -1136,11 +1136,8 @@ int tps_reg_response_received(sip_msg_t *msg)
 	}
 
 	mtsd.direction = direction;
-	
 	tps_storage_lock_release(&lkey);
-
 	tps_reappend_via(msg, &btsd, &btsd.x_via);
-	tps_append_xbranch(msg, &mtsd.x_vbranch1);
 
 	return 0;
 
@@ -1163,10 +1160,14 @@ int tps_request_sent(sip_msg_t *msg, int dialog, int local)
 
 	LM_DBG("handling outgoing request (%d, %d)\n", dialog, local);
 	
-	if(_tps_enable_register_publish == 1) {
-		LM_DBG("_tps_enable_register_publish==1\n");
-		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
+	
+	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)){
+		if(_tps_enable_register_publish == 1) {
+			LM_DBG("_tps_enable_register_publish==1\n");
 			return tps_reg_request_sent(msg);
+		}else{
+			return 0;
+		}
 	}
 
 	memset(&mtsd, 0, sizeof(tps_data_t));
@@ -1337,7 +1338,10 @@ int tps_response_sent(sip_msg_t *msg)
 	int contact_keep = 0;
 
 	LM_DBG("handling outgoing response\n");
-
+	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)){
+	        	/* nothing to do for REGISTER PUBLISH response sent*/
+			return 0;
+	}
 	memset(&mtsd, 0, sizeof(tps_data_t));
 	memset(&stsd, 0, sizeof(tps_data_t));
 	memset(&btsd, 0, sizeof(tps_data_t));
@@ -1353,10 +1357,6 @@ int tps_response_sent(sip_msg_t *msg)
 	}
 	mtsd.x_vbranch1 = xvbranch;
 	tps_remove_xbranch(msg);
-	if(_tps_enable_register_publish == 0) {
-		if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH))
-			return 0;
-	}
 	if(get_cseq(msg)->method_id == METHOD_MESSAGE) {
 		tps_remove_headers(msg, HDR_RECORDROUTE_T);
 		tps_remove_headers(msg, HDR_CONTACT_T);
