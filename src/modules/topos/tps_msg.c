@@ -882,7 +882,7 @@ int tps_request_received(sip_msg_t *msg, int dialog)
 
 	LM_DBG("handling incoming request\n");
 	
-	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)){
+	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)) {
 	        	/* nothing to do for REGISTER PUBLISH when received */
 			return 0;
 	}
@@ -1161,11 +1161,11 @@ int tps_request_sent(sip_msg_t *msg, int dialog, int local)
 	LM_DBG("handling outgoing request (%d, %d)\n", dialog, local);
 	
 	
-	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)){
+	if((get_cseq(msg)->method_id) & (METHOD_REGISTER | METHOD_PUBLISH)) {
 		if(_tps_enable_register_publish == 1) {
 			LM_DBG("_tps_enable_register_publish==1\n");
 			return tps_reg_request_sent(msg);
-		}else{
+		} else {
 			return 0;
 		}
 	}
