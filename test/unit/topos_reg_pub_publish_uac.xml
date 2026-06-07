@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="topos_reg_pub_publish_uac">
+  <send retrans="500">
+    <![CDATA[
+PUBLISH sip:1000@127.0.0.1 SIP/2.0
+Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+Max-Forwards: 70
+To: <sip:1000@127.0.0.1>
+From: <sip:1000@127.0.0.1>;tag=[call_number]
+Call-ID: regpub-publish-callid-001
+CSeq: 1 PUBLISH
+Contact: <sip:1000@[local_ip]:[local_port]>
+Event: presence
+Expires: 60
+Content-Type: application/pidf+xml
+Content-Length: 0
+
+]]>
+  </send>
+  <recv response="200"/>
+</scenario>
