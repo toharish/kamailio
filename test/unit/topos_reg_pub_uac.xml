@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+<scenario name="topos_reg_pub_uac">
+  <send retrans="500">
+    <![CDATA[
+REGISTER sip:127.0.0.1 SIP/2.0
+Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+Max-Forwards: 70
+To: <sip:1000@127.0.0.1>
+From: <sip:1000@127.0.0.1>;tag=[call_number]
+Call-ID: regpub-test-callid-001
+CSeq: 1 REGISTER
+Contact: <sip:1000@[local_ip]:[local_port]>;expires=3600
+Content-Length: 0
+
+]]>
+  </send>
+  <recv response="200" optional="true"/>
+</scenario>
