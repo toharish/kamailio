@@ -57,11 +57,45 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include <arpa/inet.h>
 
+int ipsec_sa_params_changed(ipsec_t *old_sa, ipsec_t *new_sa)
+{
+	if (!old_sa || !new_sa) return 1;
+	if (old_sa->prot.len != new_sa->prot.len) return 1;
+	if (old_sa->prot.len > 0 && (!old_sa->prot.s || !new_sa->prot.s ||
+	    strncasecmp(old_sa->prot.s, new_sa->prot.s, old_sa->prot.len) != 0)) {
+		return 1;
+	}
+	if (old_sa->r_alg.len != new_sa->r_alg.len) return 1;
+	if (old_sa->r_alg.len > 0 && (!old_sa->r_alg.s || !new_sa->r_alg.s ||
+	    strncasecmp(old_sa->r_alg.s, new_sa->r_alg.s, old_sa->r_alg.len) != 0)) {
+		return 1;
+	}
+	if (old_sa->r_ealg.len != new_sa->r_ealg.len) return 1;
+	if (old_sa->r_ealg.len > 0 && (!old_sa->r_ealg.s || !new_sa->r_ealg.s ||
+	    strncasecmp(old_sa->r_ealg.s, new_sa->r_ealg.s, old_sa->r_ealg.len) != 0)) {
+		return 1;
+	}
+	if (old_sa->ik.len != new_sa->ik.len) return 1;
+	if (old_sa->ik.len > 0 && (!old_sa->ik.s || !new_sa->ik.s ||
+	    memcmp(old_sa->ik.s, new_sa->ik.s, old_sa->ik.len) != 0)) {
+		return 1;
+	}
+	if (old_sa->ck.len != new_sa->ck.len) return 1;
+	if (old_sa->ck.len > 0 && (!old_sa->ck.s || !new_sa->ck.s ||
+	    memcmp(old_sa->ck.s, new_sa->ck.s, old_sa->ck.len) != 0)) {
+		return 1;
+	}
+	return 0;
+}
+
+#ifndef _IPSEC_SPI_LIST_TEST
 
 extern str ipsec_listen_addr;
+
 extern str ipsec_listen_addr6;
 extern int ipsec_reuse_server_port;
 extern ip_addr_t ipsec_listen_ip_addr;
@@ -299,7 +333,7 @@ static int fill_contact(
 				}
 
 				LM_DBG("parsed alias [%d://%.*s:%d]\n", ci->received_proto,
-						ci->received_host.len, ci->received_host.s,
+						ci->received_host.len, ci.received_host.s,
 						ci->received_port);
 			}
 		} else {
@@ -400,7 +434,7 @@ static int fill_contact(
 			m->first_line.type == SIP_REQUEST ? "REQUEST" : "REPLY",
 			ci->aor.len, ci->aor.s, ci->via_prot, ci->via_host.len,
 			ci->via_host.s, ci->via_port, ci->received_proto,
-			ci->received_host.len, ci->received_host.s, ci->received_port);
+			ci->received_host.len, ci.received_host.s, ci.received_port);
 
 	// Set to default, if not set:
 	if(ci->received_port == 0)
@@ -475,10 +509,8 @@ static int update_contact_ipsec_params(
 	memcpy(s->ik.s, ik.s, ik.len);
 	s->ik.len = ik.len;
 
-	// Reuse only if both CK and IK match.
-	if(s_old && s_old->ck.s != NULL && s_old->ik.s != NULL
-			&& strcmp(s_old->ck.s, s->ck.s) == 0
-			&& strcmp(s_old->ik.s, s->ik.s) == 0) {
+	// Reuse only if SA parameters haven't changed.
+	if(s_old && !ipsec_sa_params_changed(s_old, s)) {
 		if(s_old->spi_pc && s_old->spi_ps && s_old->port_pc && s_old->port_ps) {
 			LM_INFO("Reusing IPSEC tunnel\n");
 			s->spi_pc = s_old->spi_pc;
@@ -488,6 +520,7 @@ static int update_contact_ipsec_params(
 			return 0;
 		}
 	}
+
 
 	if(acquire_spi(&s->spi_pc, &s->spi_ps, &s->port_pc, &s->port_ps) == 0) {
 		LM_ERR("Error generating client SPI for IPSEC tunnel creation\n");
@@ -615,78 +648,19 @@ static int destroy_ipsec_tunnel(
 		return -1;
 	}
 
-	ip_addr_t ip_addr;
-	str ipsec_addr;
-
-	// convert 'remote_addr' ip string to ip_addr_t
-	if(str2ipxbuf(&remote_addr, &ip_addr) < 0) {
-		LM_ERR("Unable to convert remote address [%.*s]\n", remote_addr.len,
-				remote_addr.s);
-		close_mnl_socket(sock);
-		return -1;
-	}
-
-	if(ip_addr.af == AF_INET6) {
-		ipsec_addr = ipsec_listen_addr6;
-	} else {
-		ipsec_addr = ipsec_listen_addr;
-	}
-
-	LM_DBG("Destroying security associations: Local IP: %.*s client port: %d "
+	LM_DBG("Destroying security associations: client port: %d "
 		   "server port: %d; UE IP: %.*s; client port %d server port %d; "
 		   "spi_ps %u, spi_pc %u, spi_us %u, spi_uc %u\n",
-			ipsec_addr.len, ipsec_addr.s, s->port_pc, s->port_ps,
-			remote_addr.len, remote_addr.s, s->port_uc, s->port_us, s->spi_ps,
-			s->spi_pc, s->spi_us, s->spi_uc);
+			s->port_pc, s->port_ps, remote_addr.len, remote_addr.s, s->port_uc,
+			s->port_us, s->spi_ps, s->spi_pc, s->spi_us, s->spi_uc);
 
-	// SA1 UE client to P-CSCF server
-	remove_sa(sock, remote_addr, ipsec_addr, s->port_uc, s->port_ps, s->spi_ps,
-			ip_addr.af);
-	remove_policy(sock, remote_addr, ipsec_addr, s->port_uc, s->port_ps,
-			s->spi_ps, ip_addr.af, IPSEC_POLICY_DIRECTION_IN);
-
-	// SA2 P-CSCF client to UE server
-	remove_sa(sock, ipsec_addr, remote_addr, s->port_pc, s->port_us, s->spi_us,
-			ip_addr.af);
-	remove_policy(sock, ipsec_addr, remote_addr, s->port_pc, s->port_us,
-			s->spi_us, ip_addr.af, IPSEC_POLICY_DIRECTION_OUT);
-
-	// SA3 P-CSCF server to UE client
-	remove_sa(sock, ipsec_addr, remote_addr, s->port_ps, s->port_uc, s->spi_uc,
-			ip_addr.af);
-	remove_policy(sock, ipsec_addr, remote_addr, s->port_ps, s->port_uc,
-			s->spi_uc, ip_addr.af, IPSEC_POLICY_DIRECTION_OUT);
-
-	// SA4 UE server to P-CSCF client
-	remove_sa(sock, remote_addr, ipsec_addr, s->port_us, s->port_pc, s->spi_pc,
-			ip_addr.af);
-	remove_policy(sock, remote_addr, ipsec_addr, s->port_us, s->port_pc,
-			s->spi_pc, ip_addr.af, IPSEC_POLICY_DIRECTION_IN);
-
-	/* cope with some broken In-Dialog routing */
-	// SA5 UE client to P-CSCF client
-	remove_sa(sock, remote_addr, ipsec_addr, s->port_uc, s->port_pc, s->spi_ps,
-			ip_addr.af);
-	remove_policy(sock, remote_addr, ipsec_addr, s->port_uc, s->port_pc,
-			s->spi_ps, ip_addr.af, IPSEC_POLICY_DIRECTION_IN);
-
-	// SA6 P-CSCF client to UE client
-	remove_sa(sock, ipsec_addr, remote_addr, s->port_pc, s->port_uc, s->spi_us,
-			ip_addr.af);
-	remove_policy(sock, ipsec_addr, remote_addr, s->port_pc, s->port_uc,
-			s->spi_us, ip_addr.af, IPSEC_POLICY_DIRECTION_OUT);
-
-	// SA7 P-CSCF server to UE server
-	remove_sa(sock, ipsec_addr, remote_addr, s->port_ps, s->port_us, s->spi_uc,
-			ip_addr.af);
-	remove_policy(sock, ipsec_addr, remote_addr, s->port_ps, s->port_us,
-			s->spi_uc, ip_addr.af, IPSEC_POLICY_DIRECTION_OUT);
-
-	// SA8 UE server to P-CSCF server
-	remove_sa(sock, remote_addr, ipsec_addr, s->port_us, s->port_ps, s->spi_pc,
-			ip_addr.af);
-	remove_policy(sock, remote_addr, ipsec_addr, s->port_us, s->port_ps,
-			s->spi_pc, ip_addr.af, IPSEC_POLICY_DIRECTION_IN);
+	/* Execute SA/policy deletion pass for both IPv4 and IPv6 listen sockets */
+	if(ipsec_listen_ip_addr.af) {
+		delete_sa_set(sock, &ipsec_listen_ip_addr, remote_addr, s);
+	}
+	if(ipsec_listen_ip_addr6.af) {
+		delete_sa_set(sock, &ipsec_listen_ip_addr6, remote_addr, s);
+	}
 
 	// Release SPIs
 	release_spi(s->spi_pc, s->spi_ps, s->port_pc, s->port_ps);
@@ -694,6 +668,7 @@ static int destroy_ipsec_tunnel(
 	close_mnl_socket(sock);
 	return 0;
 }
+
 
 void ipsec_on_expire(struct pcontact *c, int type, void *param)
 {
@@ -949,7 +924,13 @@ int ipsec_create(struct sip_msg *m, udomain_t *d, int _cflags)
 		goto cleanup;
 	}
 
+	if(old_s && ipsec_sa_params_changed(old_s, s)) {
+		LM_INFO("SA security parameters changed during re-REGISTER; destroying old SA\n");
+		destroy_ipsec_tunnel(ci.received_host, old_s, pcontact->contact_port);
+	}
+
 	fun_ret_c = create_ipsec_tunnel(&req->rcv.src_ip, s);
+
 	if(fun_ret_c != 0) {
 		LM_ERR("IPSEC tunnel creation failed.\n");
 		goto cleanup;
@@ -1456,31 +1437,27 @@ int ipsec_reconfig()
 	}
 	atomic_set(ipsec_reconfig_flag, 1);
 
-	if(clean_spi_list() != 0) {
-		return 1;
+	LM_DBG("reconfig called\n");
+
+	if((ret = ipsec_cleanall()) != 0) {
+		LM_ERR("Failed to clean tunnels on reconfig\n");
+		return ret;
 	}
 
-	ret = ipsec_cleanall();
-	atomic_set(ipsec_reconfig_flag, 0);
-	return ret;
-}
+	if(destroy_spi_gen() != 0) {
+		LM_ERR("Error destroying spi generator\n");
+		return ret;
+	}
 
-int ipsec_cleanall()
-{
-	struct mnl_socket *nlsock = init_mnl_socket();
-	if(!nlsock) {
+	int res = 0;
+	if((res = init_spi_gen(spi_id_start, spi_id_range, ipsec_server_port,
+				ipsec_client_port, ipsec_max_connections))
+			!= 0) {
+		LM_ERR("Error initialising spi generator. Error: %d\n", res);
 		return -1;
 	}
 
-	if(clean_sa(nlsock) != 0) {
-		LM_WARN("Error cleaning IPSec Security associations during startup.\n");
-	}
-
-	if(clean_policy(nlsock) != 0) {
-		LM_WARN("Error cleaning IPSec Policies during startup.\n");
-	}
-
-	close_mnl_socket(nlsock);
-
 	return 0;
 }
+
+#endif
