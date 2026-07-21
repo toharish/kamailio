@@ -1,6 +1,4 @@
 /*
- * IMS IPSEC PCSCF module
- *
  * Copyright (C) 2018 Tsvetomir Dimitrov
  *
  * This file is part of Kamailio, a free SIP server.
@@ -23,40 +21,66 @@
  *
  */
 
-#ifndef _SPI_LIST_H_
+#ifndef IMS_IPSEC_PCSCF_SPI_LIST
+#define IMS_IPSEC_PCSCF_SPI_LIST
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 
-//
-// Single linked list implementation. The elements are kept sorted via insertion sort.
-//
+#define SPI_LIST_INITIAL_CAPACITY 64
 
-
-typedef struct _spi_node spi_node_t;
-
-struct _spi_node
-{
-	spi_node_t *next;
-	uint32_t spi_cid;
-	uint32_t spi_sid;
-	uint16_t sport;
-	uint16_t cport;
-};
-
-typedef struct _spi_list
-{
-	spi_node_t *head;
-	spi_node_t *tail;
+typedef struct {
+	uint32_t *spis;
+	size_t count;
+	size_t capacity;
 } spi_list_t;
 
+static inline void spi_list_init(spi_list_t *list) {
+	list->spis = NULL;
+	list->count = 0;
+	list->capacity = 0;
+}
 
-spi_list_t create_list();
-void destroy_list(spi_list_t *lst);
-int spi_add(spi_list_t *list, uint32_t spi_cid, uint32_t spi_sid,
-		uint16_t cport, uint16_t sport);
-int spi_remove_head(spi_list_t *list);
-int spi_remove(spi_list_t *list, uint32_t spi_cid, uint32_t spi_sid);
-int spi_in_list(spi_list_t *list, uint32_t spi_cid, uint32_t spi_sid);
+static inline void spi_list_free(spi_list_t *list) {
+	if (list->spis) {
+		free(list->spis);
+		list->spis = NULL;
+	}
+	list->count = 0;
+	list->capacity = 0;
+}
 
-#endif /* _SPI_LIST_H_ */
+static inline int spi_list_contains(const spi_list_t *list, uint32_t spi) {
+	if (!list || !list->spis) return 0;
+	for (size_t i = 0; i < list->count; i++) {
+		if (list->spis[i] == spi) return 1;
+	}
+	return 0;
+}
+
+static inline int spi_list_add(spi_list_t *list, uint32_t spi) {
+	if (!list) return -1;
+	if (spi_list_contains(list, spi)) return 0;
+	if (list->count >= list->capacity) {
+		size_t new_cap = (list->capacity == 0) ? SPI_LIST_INITIAL_CAPACITY : list->capacity * 2;
+		uint32_t *new_spis = (uint32_t *)realloc(list->spis, new_cap * sizeof(uint32_t));
+		if (!new_spis) return -1;
+		list->spis = new_spis;
+		list->capacity = new_cap;
+	}
+	list->spis[list->count++] = spi;
+	return 0;
+}
+
+static inline int spi_list_remove(spi_list_t *list, uint32_t spi) {
+	if (!list || !list->spis) return 0;
+	for (size_t i = 0; i < list->count; i++) {
+		if (list->spis[i] == spi) {
+			list->spis[i] = list->spis[--list->count];
+			return 1;
+		}
+	}
+	return 0;
+}
+
+#endif /* IMS_IPSEC_PCSCF_SPI_LIST */
