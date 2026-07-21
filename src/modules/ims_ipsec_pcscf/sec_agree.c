@@ -1,5 +1,5 @@
-/**
- * Copyright (C) 2017 kamailio.org
+/*
+ * Copyright (C) 2018 Tsvetomir Dimitrov
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -23,335 +23,86 @@
 
 #include "sec_agree.h"
 
-#include "../../core/str.h"
-#include "../../core/parser/msg_parser.h"
-#include "../../core/mem/mem.h"
+#include <string.h>
+
+#include "../../core/dprint.h"
+#include "../../lib/ims/ims_getters.h"
+#include "ipsec_alg.h"
 
 extern str ipsec_preferred_alg;
 extern str ipsec_preferred_ealg;
 
-static uint32_t parse_digits(str value)
+int process_sec_agree_param(
+		str name, str value, ipsec_t *ipsec, int *alg_found, int *ealg_found)
 {
-	uint32_t ret = 0;
 
-	int buf_len = value.len + 1;
-	char *buf = (char *)malloc(buf_len);
+	if(name.len == 3 && strncasecmp(name.s, "alg", 3) == 0) {
+		if ((ipsec_preferred_alg.len && STR_EQ(value, ipsec_preferred_alg))
+				|| (value.len == 16 && strncasecmp(value.s, "hmac-sha-256-128", 16) == 0)
+				|| (value.len == 13 && strncasecmp(value.s, "hmac-sha-1-96", 13) == 0)
+				|| (value.len == 12 && strncasecmp(value.s, "hmac-md5-96", 12) == 0)) {
 
-	if(!buf) {
-		return ret;
-	}
-
-	memset(buf, 0, buf_len);
-	memcpy(buf, value.s, value.len);
-
-	ret = atoll(buf);
-
-	free(buf);
-
-	return ret;
-}
-
-static void trim_whitespaces(str *string)
-{
-	// skip leading whitespace
-	while(string->len
-			&& (string->s[0] == ' ' || string->s[0] == '\t'
-					|| string->s[0] == '<')) {
-		string->s = string->s + 1;
-		string->len--;
-	}
-
-	// skip trailing whitespace
-	while(string->len
-			&& (string->s[string->len - 1] == ' '
-					|| string->s[string->len - 1] == '\t')) {
-		string->len--;
-	}
-}
-
-#define SEC_COPY_STR_PARAM(DST, SRC) \
-	DST.s = shm_malloc(SRC.len);     \
-	if(DST.s == NULL) {              \
-		return -1;                   \
-	}                                \
-	memcpy(DST.s, SRC.s, SRC.len);   \
-	DST.len = SRC.len;
-
-
-static int process_sec_agree_param(
-		str name, str value, ipsec_t *ret, char *alg_found, char *ealg_found)
-{
-	trim_whitespaces(&name);
-	trim_whitespaces(&value);
-
-	if(strncasecmp(name.s, "alg", name.len) == 0) {
-		SEC_COPY_STR_PARAM(ret->r_alg, value);
-
-		if(ipsec_preferred_alg.len && STR_EQ(value, ipsec_preferred_alg)) {
+			if(pkg_str_dup(&ipsec->r_alg, &value) < 0) {
+				LM_ERR("Failed to allocate memory for r_alg\n");
+				return -1;
+			}
 			*alg_found = 1;
 		}
-	} else if(strncasecmp(name.s, "prot", name.len) == 0) {
-		SEC_COPY_STR_PARAM(ret->prot, value);
-	} else if(strncasecmp(name.s, "mod", name.len) == 0) {
-		SEC_COPY_STR_PARAM(ret->mod, value);
-	} else if(strncasecmp(name.s, "ealg", name.len) == 0) {
-		SEC_COPY_STR_PARAM(ret->r_ealg, value);
 
-		if(ipsec_preferred_ealg.len && STR_EQ(value, ipsec_preferred_ealg)) {
+		if(pkg_str_dup(&ipsec->alg, &value) < 0) {
+			LM_ERR("Failed to allocate memory for alg\n");
+			return -1;
+		}
+	} else if(name.len == 4 && strncasecmp(name.s, "ealg", 4) == 0) {
+		if ((ipsec_preferred_ealg.len && STR_EQ(value, ipsec_preferred_ealg))
+				|| (value.len == 7 && strncasecmp(value.s, "aes-gcm", 7) == 0)
+				|| (value.len == 11 && strncasecmp(value.s, "aes-256-gcm", 11) == 0)
+				|| (value.len == 12 && strncasecmp(value.s, "aes-cbc-128", 12) == 0)
+				|| (value.len == 10 && strncasecmp(value.s, "3des-cbc", 10) == 0)
+				|| (value.len == 9 && strncasecmp(value.s, "null-ealg", 9) == 0)) {
+
+			if(pkg_str_dup(&ipsec->r_ealg, &value) < 0) {
+				LM_ERR("Failed to allocate memory for r_ealg\n");
+				return -1;
+			}
 			*ealg_found = 1;
 		}
-	} else if(strncasecmp(name.s, "spi-c", name.len) == 0) {
-		ret->spi_uc = parse_digits(value);
-	} else if(strncasecmp(name.s, "spi-s", name.len) == 0) {
-		ret->spi_us = parse_digits(value);
-	} else if(strncasecmp(name.s, "port-c", name.len) == 0) {
-		ret->port_uc = parse_digits(value);
-	} else if(strncasecmp(name.s, "port-s", name.len) == 0) {
-		ret->port_us = parse_digits(value);
-	} else {
-		//unknown parameter
+
+		if(pkg_str_dup(&ipsec->ealg, &value) < 0) {
+			LM_ERR("Failed to allocate memory for ealg\n");
+			return -1;
+		}
+	} else if(name.len == 4 && strncasecmp(name.s, "prot", 4) == 0) {
+		if(pkg_str_dup(&ipsec->prot, &value) < 0) {
+			LM_ERR("Failed to allocate memory for prot\n");
+			return -1;
+		}
+	} else if(name.len == 3 && strncasecmp(name.s, "mod", 3) == 0) {
+		if(pkg_str_dup(&ipsec->mod, &value) < 0) {
+			LM_ERR("Failed to allocate memory for mod\n");
+			return -1;
+		}
+	} else if(name.len == 5 && strncasecmp(name.s, "spi-c", 5) == 0) {
+		if(str2int(&value, &ipsec->spi_uc) < 0) {
+			LM_ERR("Failed to convert spi-c to int\n");
+			return -1;
+		}
+	} else if(name.len == 5 && strncasecmp(name.s, "spi-s", 5) == 0) {
+		if(str2int(&value, &ipsec->spi_us) < 0) {
+			LM_ERR("Failed to convert spi-s to int\n");
+			return -1;
+		}
+	} else if(name.len == 6 && strncasecmp(name.s, "port-c", 6) == 0) {
+		if(str2int(&value, &ipsec->port_uc) < 0) {
+			LM_ERR("Failed to convert port-c to int\n");
+			return -1;
+		}
+	} else if(name.len == 6 && strncasecmp(name.s, "port-s", 6) == 0) {
+		if(str2int(&value, &ipsec->port_us) < 0) {
+			LM_ERR("Failed to convert port-s to int\n");
+			return -1;
+		}
 	}
 
 	return 0;
-}
-
-/**
- * @brief Check whether UE IPsec parameters have been selected/populated.
- *
- * Verifies that all required fields of the provided ipsec_t structure are
- * present (non-zero for integer fields and non-zero length for length-bearing
- * fields). This function is used to decide if the UE has provided IPsec
- * parameters for use in the session.
- *
- * @param params Pointer to an ipsec_t structure to inspect. Must be non-NULL;
- *               passing NULL yields undefined behavior.
- *
- * @return 1 if all required parameters are present:
- *         0 if any of the above checks fail.
- */
-static int is_ue_ipsec_params_selected(ipsec_t *params)
-{
-	if(params->spi_uc == 0 || params->spi_us == 0 || params->port_uc == 0
-			|| params->port_us == 0 || params->prot.len == 0
-			|| params->mod.len == 0 || params->r_alg.len == 0
-			|| params->r_ealg.len == 0) {
-		return 0;
-	}
-
-	return 1;
-}
-
-static security_t *parse_sec_agree(struct hdr_field *h)
-{
-	int i = 0;
-
-	str name = {0, 0};
-	str value = {0, 0};
-	str mechanism_name = {0, 0};
-	security_t *params = NULL;
-	str body = h->body;
-
-	trim_whitespaces(&body);
-
-	// find mechanism name end
-	for(i = 0; body.s[i] != ';' && i < body.len; i++)
-		;
-
-	mechanism_name.s = body.s;
-	mechanism_name.len = i;
-
-	if(strncasecmp(mechanism_name.s, "ipsec-3gpp", 10) != 0) {
-		// unsupported mechanism
-		LM_ERR("Unsupported mechanism: %.*s\n", STR_FMT(&mechanism_name));
-		goto cleanup;
-	}
-
-	// allocate shm memory for security_t (it will be saved in contact)
-	if((params = shm_malloc(sizeof(security_t))) == NULL) {
-		LM_ERR("Error allocating shm memory for security_t parameters during "
-			   "sec-agree parsing\n");
-		return NULL;
-	}
-	memset(params, 0, sizeof(security_t));
-
-	if((params->sec_header.s = shm_malloc(h->name.len)) == NULL) {
-		LM_ERR("Error allocating shm memory for security_t sec_header "
-			   "parameter during sec-agree parsing\n");
-		goto cleanup;
-	}
-	memcpy(params->sec_header.s, h->name.s, h->name.len);
-	params->sec_header.len = h->name.len;
-
-	// allocate memory for ipsec_t in security_t
-	params->data.ipsec = shm_malloc(sizeof(ipsec_t));
-	if(!params->data.ipsec) {
-		LM_ERR("Error allocating memory for ipsec parameters during sec-agree "
-			   "parsing\n");
-		goto cleanup;
-	}
-	memset(params->data.ipsec, 0, sizeof(ipsec_t));
-
-
-	// set security type to IPSEC
-	params->type = SECURITY_IPSEC;
-
-	body.s = body.s + i + 1;
-	body.len = body.len - i - 1;
-
-	char preferred_alg_found = 0;
-	char preferred_ealg_found = 0;
-
-	// get the rest of the parameters
-	i = 0;
-	while(i <= body.len) {
-		//look for end of buffer or parameter separator
-		if(i == body.len || body.s[i] == ';' || body.s[i] == ','
-				|| body.s[i] == ' ') {
-			if(name.len) {
-				// if(name.len) => a param name is parsed
-				// and now i points to the end of its value
-				value.s = body.s;
-				value.len = i;
-			}
-			//else - name is not read but there is a value
-			//so there is some error - skip ahead
-			body.s = body.s + i + 1;
-			body.len = body.len - i - 1;
-
-			i = 0;
-
-			if(name.len && value.len) {
-				if(ipsec_preferred_alg.len && ipsec_preferred_ealg.len) {
-					if(preferred_alg_found && preferred_ealg_found
-							&& is_ue_ipsec_params_selected(
-									params->data.ipsec)) {
-						break;
-					}
-					preferred_alg_found = 0;
-					preferred_ealg_found = 0;
-				}
-				if(ipsec_preferred_alg.len && !ipsec_preferred_ealg.len) {
-					if(preferred_alg_found
-							&& is_ue_ipsec_params_selected(
-									params->data.ipsec)) {
-						break;
-					}
-					preferred_alg_found = 0;
-				}
-				if(!ipsec_preferred_alg.len && ipsec_preferred_ealg.len) {
-					if(preferred_ealg_found
-							&& is_ue_ipsec_params_selected(
-									params->data.ipsec)) {
-						break;
-					}
-					preferred_ealg_found = 0;
-				}
-
-				char alg_found = 0;
-				char ealg_found = 0;
-				if(process_sec_agree_param(name, value, params->data.ipsec,
-						   &alg_found, &ealg_found)) {
-					goto cleanup;
-				}
-				if(alg_found) {
-					preferred_alg_found = 1;
-				}
-				if(ealg_found) {
-					preferred_ealg_found = 1;
-				}
-			}
-			//else - something's wrong. Ignore!
-
-			//processing is done - reset
-			name.len = 0;
-			value.len = 0;
-		}
-		//look for param=value separator
-		else if(body.s[i] == '=') {
-			name.s = body.s;
-			name.len = i;
-
-			//position saved - skip ahead
-			body.s = body.s + i + 1;
-			body.len = body.len - i - 1;
-
-			i = 0;
-		}
-		//nothing interesting - move on
-		else {
-			i++;
-		}
-	}
-
-	return params;
-
-cleanup:
-	// The same piece of code also lives in modules/ims_usrloc_pcscf/pcontact.c
-	// Function - free_security()
-	// Keep them in sync!
-	if(params) {
-		if(params->sec_header.s)
-			shm_free(params->sec_header.s);
-
-		if(params->type == SECURITY_IPSEC && params->data.ipsec) {
-			if(params->data.ipsec->ealg.s)
-				shm_free(params->data.ipsec->ealg.s);
-			if(params->data.ipsec->r_ealg.s)
-				shm_free(params->data.ipsec->r_ealg.s);
-			if(params->data.ipsec->ck.s)
-				shm_free(params->data.ipsec->ck.s);
-			if(params->data.ipsec->alg.s)
-				shm_free(params->data.ipsec->alg.s);
-			if(params->data.ipsec->r_alg.s)
-				shm_free(params->data.ipsec->r_alg.s);
-			if(params->data.ipsec->ik.s)
-				shm_free(params->data.ipsec->ik.s);
-			if(params->data.ipsec->prot.s)
-				shm_free(params->data.ipsec->prot.s);
-			if(params->data.ipsec->mod.s)
-				shm_free(params->data.ipsec->mod.s);
-			shm_free(params->data.ipsec);
-		} else {
-			shm_free(params->data.ipsec);
-		}
-
-		shm_free(params);
-	}
-
-	return NULL;
-}
-
-static str s_security_client = {"Security-Client", 15};
-/**
- * Looks for the Security-Client header
- * @param msg - the sip message
- * @param params - ptr to struct sec_agree_params, where parsed values will be saved
- * @returns 0 on success, error code on failure
- */
-security_t *cscf_get_security(struct sip_msg *msg)
-{
-	struct hdr_field *h = NULL;
-
-	if(!msg)
-		return NULL;
-
-	if(parse_headers(msg, HDR_EOH_F, 0) < 0) {
-		return NULL;
-	}
-
-	h = msg->headers;
-	while(h) {
-		if(h->name.len == s_security_client.len
-				&& strncasecmp(h->name.s, s_security_client.s,
-						   s_security_client.len)
-						   == 0) {
-			return parse_sec_agree(h);
-		}
-
-		h = h->next;
-	}
-
-	LM_INFO("No security parameters found\n");
-
-	return NULL;
 }
