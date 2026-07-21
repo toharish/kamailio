@@ -1,7 +1,4 @@
 /*
- * IMS IPSEC PCSCF module
- *
- * Copyright (C) 2018 Alexander Yosifov
  * Copyright (C) 2018 Tsvetomir Dimitrov
  *
  * This file is part of Kamailio, a free SIP server.
@@ -30,36 +27,67 @@
 #include "../../core/str.h"
 #include "../../core/ip_addr.h"
 
+#include <libmnl/libmnl.h>
 
-struct mnl_socket;
+#include "../../lib/ims/ims_getters.h"
 
 enum ipsec_policy_direction
 {
 	IPSEC_POLICY_DIRECTION_IN = 0,
-	IPSEC_POLICY_DIRECTION_OUT = 1
+	IPSEC_POLICY_DIRECTION_OUT = 1,
+	IPSEC_POLICY_DIRECTION_FWD = 2
 };
 
+struct delete_sa_data
+{
+	struct mnl_socket *mnl_socket;
+	struct ip_addr dest_ip_addr;
+	ipsec_t *ipsec;
+};
 
+struct delete_policy_data
+{
+	struct mnl_socket *mnl_socket;
+	struct ip_addr dest_ip_addr;
+	ip_addr_t local_ip_addr;
+	ipsec_t *ipsec;
+};
+
+#ifndef _IPSEC_SPI_LIST_TEST
+struct delete_unused_sa_data
+{
+	struct mnl_socket *mnl_socket;
+	struct pcontact *ucontacts;
+	int ucontacts_count;
+};
+#endif
+
+void close_mnl_socket(struct mnl_socket *mnl_socket);
 struct mnl_socket *init_mnl_socket();
-void close_mnl_socket(struct mnl_socket *sock);
 
-int add_sa(struct mnl_socket *nl_sock, const struct ip_addr *src_addr_param,
-		const struct ip_addr *dest_addr_param, int s_port, int d_port,
-		int long id, str ck, str ik, str r_alg, str r_ealg);
-int remove_sa(struct mnl_socket *nl_sock, str src_addr_param,
-		str dest_addr_param, int s_port, int d_port, int long id,
-		unsigned int af);
+int add_sa(struct mnl_socket *mnl_socket, const struct ip_addr *src_addr,
+		const struct ip_addr *dest_addr, const unsigned short src_port,
+		const unsigned short dest_port, const unsigned int spi, const str ck,
+		const str ik, const str alg, const str ealg);
 
-int add_policy(struct mnl_socket *mnl_socket,
-		const struct ip_addr *src_addr_param,
-		const struct ip_addr *dest_addr_param, int src_port, int dst_port,
-		int long p_id, enum ipsec_policy_direction dir);
-int remove_policy(struct mnl_socket *mnl_socket, str src_addr_param,
-		str dest_addr_param, int src_port, int dst_port, int long p_id,
-		unsigned int af, enum ipsec_policy_direction dir);
+int delete_sa(struct mnl_socket *mnl_socket, const struct ip_addr *dest_addr,
+		const unsigned int spi);
 
-int clean_sa(struct mnl_socket *mnl_socket);
+int add_policy(struct mnl_socket *mnl_socket, const struct ip_addr *src_addr,
+		const struct ip_addr *dest_addr, const unsigned short src_port,
+		const unsigned short dest_port, const unsigned int spi,
+		const enum ipsec_policy_direction dir);
+
+int delete_policy(struct mnl_socket *mnl_socket,
+		const struct ip_addr *src_addr, const struct ip_addr *dest_addr,
+		const unsigned short src_port, const unsigned short dest_port,
+		const enum ipsec_policy_direction dir);
+
+int delete_sa_set(struct mnl_socket *mnl_socket, ip_addr_t *proxy_ip_addr,
+		str remote_addr, ipsec_t *s);
+
 int clean_policy(struct mnl_socket *mnl_socket);
+int clean_sa(struct mnl_socket *mnl_socket);
 
 int delete_unused_tunnels();
 
