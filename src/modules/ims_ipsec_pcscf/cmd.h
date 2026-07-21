@@ -3,7 +3,6 @@
  *
  * Copyright (C) 2012 Smile Communications, jason.penton@smilecoms.com
  * Copyright (C) 2012 Smile Communications, richard.good@smilecoms.com
-
  *
  * The initial version of this code was written by Dragos Vingarzan
  * (dragos(dot)vingarzan(at)fokus(dot)fraunhofer(dot)de and the
@@ -73,5 +72,6 @@ int ipsec_reconfig();
 void ipsec_on_expire(pcontact_t *c, int type, void *param);
 int ipsec_destroy_by_contact(
 		udomain_t *_d, str *uri, str *received_host, int received_port);
+int ipsec_sa_params_changed(ipsec_t *old_sa, ipsec_t *new_sa);
 
 #endif /* IPSEC_CMD_H */
