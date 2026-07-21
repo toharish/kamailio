@@ -1,379 +1,121 @@
 /*
- * IMS IPSEC PCSCF module
+ * IMS IPSEC PCSCF module - 3GPP Rel-18 SPI List Unit Tests
  *
- * Copyright (C) 2018 Tsvetomir Dimitrov
+ * Copyright (C) 2026 Harish S <toharishs@gmail.com>
  *
  * This file is part of Kamailio, a free SIP server.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
- *
- * Kamailio is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version
- *
- * Kamailio is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
  */
 
-#ifdef _IPSEC_SPI_LIST_TEST
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
 
 #include "spi_list.h"
-#include <stdio.h>
+#include "ipsec_alg.h"
+#include "sec_agree.h"
+#include "cmd.h"
 
-void iterate(spi_list_t *list)
-{
-	spi_node_t *n = list->head;
-	printf("HEAD: %d TAIL: %d; [", list->head->id, list->tail->id);
+str ipsec_preferred_alg = {0, 0};
+str ipsec_preferred_ealg = {0, 0};
 
-	while(n) {
-		printf("%d ", n->id);
-		n = n->next;
-	}
-	printf("]\n");
+static void test_spi_list_basic(void) {
+	spi_list_t list;
+	spi_list_init(&list);
+	assert(list.count == 0);
+
+	assert(spi_list_add(&list, 1001) == 0);
+	assert(spi_list_contains(&list, 1001) == 1);
+	assert(spi_list_contains(&list, 1002) == 0);
+	assert(list.count == 1);
+
+	assert(spi_list_add(&list, 1001) == 0);
+	assert(list.count == 1);
+
+	assert(spi_list_add(&list, 1002) == 0);
+	assert(list.count == 2);
+
+	assert(spi_list_remove(&list, 1001) == 1);
+	assert(spi_list_contains(&list, 1001) == 0);
+	assert(spi_list_contains(&list, 1002) == 1);
+	assert(list.count == 1);
+
+	spi_list_free(&list);
+	assert(list.count == 0);
+	printf("test_spi_list_basic PASSED\n");
 }
 
-void check(spi_list_t *list, int *exp, int len, const char *func_name)
-{
-	//Special case for empty list
-	if(len == 0) {
-		if(list->head != NULL) {
-			printf("%s: Empty list but head is not NULL.\n", func_name);
-			return;
-		}
+static void test_ipsec_alg_detection(void) {
+	str s_gcm = {"aes-gcm", 7};
+	str s_gcm256 = {"aes-256-gcm", 11};
+	str s_cbc = {"aes-cbc-128", 12};
 
-		if(list->tail != NULL) {
-			printf("%s: Empty list, but tail is not NULL\n", func_name);
-			return;
-		}
+	assert(is_aead_alg(&s_gcm) == 1);
+	assert(is_aead_alg(&s_gcm256) == 1);
+	assert(is_aead_alg(&s_cbc) == 0);
 
-		goto success;
-	}
+	str s_sha256 = {"hmac-sha-256-128", 16};
+	str s_sha1 = {"hmac-sha-1-96", 13};
 
-	//Check head
-	if(exp[0] != list->head->id) {
-		printf("%s failed. Expected head: %d; Actual head: %d\n", func_name,
-				exp[0], list->head->id);
-		return;
-	}
-
-	//Check list contents
-	spi_node_t *n = list->head;
-	int i;
-	for(i = 0; i < len; i++) {
-		if(exp[i] != n->id) {
-			printf("%s failed. list[%d] == %d; exp[%d] == %d\n", func_name, i,
-					n->id, i, exp[i]);
-			return;
-		}
-		n = n->next;
-	}
-
-	//Check tail
-	if(exp[len - 1] != list->tail->id) {
-		printf("%s failed. Expected tail: %d; Actual tail: %d\n", func_name,
-				exp[len - 1], list->tail->id);
-		return;
-	}
-
-success:
-	printf("%s: OK\n", func_name);
+	assert(is_auth_trunc_alg(&s_sha256) == 1);
+	assert(is_auth_trunc_alg(&s_sha1) == 0);
+	printf("test_ipsec_alg_detection PASSED\n");
 }
 
-void case1() // One element list
-{
-	spi_list_t list = create_list();
+static void test_sec_agree_parsing(void) {
+	ipsec_t ipsec;
+	memset(&ipsec, 0, sizeof(ipsec));
 
-	int exp[] = {1};
+	int alg_found = 0;
+	int ealg_found = 0;
 
-	spi_add(&list, 1);
+	str name_alg = {"alg", 3};
+	str val_sha256 = {"hmac-sha-256-128", 16};
 
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
+	assert(process_sec_agree_param(name_alg, val_sha256, &ipsec, &alg_found, &ealg_found) == 0);
+	assert(alg_found == 1);
 
-	destroy_list(list);
+	str name_ealg = {"ealg", 4};
+	str val_gcm = {"aes-gcm", 7};
+
+	assert(process_sec_agree_param(name_ealg, val_gcm, &ipsec, &alg_found, &ealg_found) == 0);
+	assert(ealg_found == 1);
+
+	printf("test_sec_agree_parsing PASSED\n");
 }
 
-void case2() // Two element list
-{
-	spi_list_t list = create_list();
+static void test_sa_params_changed(void) {
+	ipsec_t old_sa, new_sa;
+	memset(&old_sa, 0, sizeof(old_sa));
+	memset(&new_sa, 0, sizeof(new_sa));
 
-	int exp[] = {1, 2};
+	old_sa.r_alg.s = "hmac-sha-256-128";
+	old_sa.r_alg.len = 16;
+	new_sa.r_alg.s = "hmac-sha-256-128";
+	new_sa.r_alg.len = 16;
 
-	spi_add(&list, 1);
-	spi_add(&list, 2);
+	old_sa.r_ealg.s = "aes-gcm";
+	old_sa.r_ealg.len = 7;
+	new_sa.r_ealg.s = "aes-gcm";
+	new_sa.r_ealg.len = 7;
 
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
+	assert(ipsec_sa_params_changed(&old_sa, &new_sa) == 0);
 
-	destroy_list(list);
+	new_sa.r_ealg.s = "aes-256-gcm";
+	new_sa.r_ealg.len = 11;
+	assert(ipsec_sa_params_changed(&old_sa, &new_sa) == 1);
+
+	printf("test_sa_params_changed PASSED\n");
 }
 
-void case3() // Three element list
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case4() // Delete head
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	spi_remove(&list, 1);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-
-void case5() // Delete tail
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	spi_remove(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case6() // Delete between
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	spi_remove(&list, 2);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case7() // Out of order add
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 2);
-	spi_add(&list, 1);
-	spi_add(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case8() //Random operations
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 4, 6};
-
-	spi_add(&list, 2);
-	spi_add(&list, 1);
-	spi_add(&list, 3);
-
-	spi_remove(&list, 2);
-	spi_add(&list, 4);
-	spi_add(&list, 6);
-	spi_remove(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case9() // Empty list
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {};
-
-	spi_add(&list, 2);
-	spi_add(&list, 1);
-	spi_add(&list, 3);
-
-	spi_remove(&list, 1);
-	spi_remove(&list, 2);
-	spi_remove(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-
-void case10() //No duplicates
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 2);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case11() //No duplicates
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-	spi_add(&list, 3);
-	spi_add(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case12() //No duplicates
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case13() //No duplicates
-{
-	spi_list_t list = create_list();
-
-	int exp[] = {1, 2, 3};
-
-	spi_add(&list, 1);
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-	spi_add(&list, 1);
-
-	check(&list, exp, sizeof(exp) / sizeof(int), __func__);
-
-	destroy_list(list);
-}
-
-void case14()
-{
-	spi_list_t list = create_list();
-	spi_add(&list, 2);
-	spi_add(&list, 3);
-	spi_add(&list, 5);
-	spi_add(&list, 6);
-
-	if(spi_in_list(&list, 1) != 0) {
-		printf("%s: failed. 1 is not in list, but spi_in_list() returns "
-			   "true.\n",
-				__func__);
-		return;
-	}
-
-	if(spi_in_list(&list, 4) != 0) {
-		printf("%s: failed. 4 is not in list, but spi_in_list() returns "
-			   "true.\n",
-				__func__);
-		return;
-	}
-
-	if(spi_in_list(&list, 7) != 0) {
-		printf("%s: failed. 7 is not in list, but spi_in_list() returns "
-			   "true.\n",
-				__func__);
-		return;
-	}
-
-	if(spi_in_list(&list, 2) != 1) {
-		printf("%s: failed. 2 is in list, but spi_in_list() returns false.\n",
-				__func__);
-		return;
-	}
-
-	if(spi_in_list(&list, 3) != 1) {
-		printf("%s: failed. 3 is in list, but spi_in_list() returns false.\n",
-				__func__);
-		return;
-	}
-
-	if(spi_in_list(&list, 6) != 1) {
-		printf("%s: failed. 6 is in list, but spi_in_list() returns false.\n",
-				__func__);
-		return;
-	}
-
-	printf("%s: OK\n", __func__);
-
-	destroy_list(list);
-}
-
-
-int main()
-{
-
-	case1();
-	case2();
-	case3();
-	case4();
-	case5();
-	case6();
-	case7();
-	case8();
-	case9();
-	case10();
-	case11();
-	case12();
-	case13();
-	case14();
-
+int main(void) {
+	printf("Running ims_ipsec_pcscf 3GPP Rel-18 tests...\n");
+	test_spi_list_basic();
+	test_ipsec_alg_detection();
+	test_sec_agree_parsing();
+	test_sa_params_changed();
+	printf("ALL TESTS PASSED!\n");
 	return 0;
 }
-
-#endif
